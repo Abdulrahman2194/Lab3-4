@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Todo App - Node.js & TypeScript</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Task Manager</h1>
+      <p class="subtitle">Double-click any task to edit inline.</p>
+    </header>
+
+    <div class="input-group">
+      <input type="text" id="todoInput" placeholder="What needs to be done?" autofocus>
+      <button class="btn-add" id="addBtn">Add</button>
+    </div>
+
+    <div class="controls">
+      <div class="filter-group">
+        <button class="filter-btn active" data-filter="all">All</button>
+        <button class="filter-btn" data-filter="active">Active</button>
+        <button class="filter-btn" data-filter="completed">Completed</button>
+      </div>
+    </div>
+
+    <ul class="todo-list" id="todoList"></ul>
+
+    <footer>
+      <span id="itemsLeft">0 items left</span>
+      <div class="action-btns">
+        <button class="btn-clear" id="clearCompletedBtn">Clear Completed</button>
+        <button class="btn-clear" id="clearAllBtn">Clear All</button>
+      </div>
+    </footer>
+  </div>
+
+  <script>
+    let currentFilter = 'all';
+
+    async function fetchTodos() {
+      const res = await fetch(`/api/todos?filter=${currentFilter}`);
+      const data = await res.json();
+      renderTodos(data.todos);
+      document.getElementById('itemsLeft').textContent = `${data.stats.active} items left`;
+    }
+
+    function renderTodos(todos) {
+      const list = document.getElementById('todoList');
+      list.innerHTML = '';
+
+      todos.forEach(todo => {
+        const li = document.createElement('li');
+        li.className = `todo-item ${todo.completed ? 'completed' : ''}`;
+        
+        const contentDiv = document.createElement('div');
+        contentDiv.className = 'todo-content';
+
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.checked = todo.completed;
+        checkbox.addEventListener('change', () => toggleTodo(todo.id));
+
+        const textSpan = document.createElement('span');
+        textSpan.textContent = todo.text;
+        textSpan.addEventListener('dblclick', () => enableEditing(todo, textSpan, li));
+
+        contentDiv.appendChild(checkbox);
+        contentDiv.appendChild(textSpan);
+
+        const deleteBtn = document.createElement('button');
+        deleteBtn.className = 'btn-delete';
+        deleteBtn.innerHTML = '✖';
+        deleteBtn.addEventListener('click', () => deleteTodo(todo.id));
+
+        li.appendChild(contentDiv);
+        li.appendChild(deleteBtn);
+        list.appendChild(li);
+      });
+    }
+
+    async function addTodo() {
+      const input = document.getElementById('todoInput');
+      const text = input.value.trim();
+      if (!text) return;
+
+      await fetch('/api/todos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text })
+      });
+
+      input.value = '';
+      fetchTodos();
+    }
+
+    async function toggleTodo(id) {
+      await fetch(`/api/todos/${id}/toggle`, { method: 'PATCH' });
+      fetchTodos();
+    }
+
+    async function deleteTodo(id) {
+      await fetch(`/api/todos/${id}`, { method: 'DELETE' });
+      fetchTodos();
+    }
+
+    function enableEditing(todo, spanElement, liElement) {
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.className = 'edit-input';
+      input.value = todo.text;
+
+      spanElement.replaceWith(input);
+      input.focus();
+
+      const save = async () => {
+        const newText = input.value.trim();
+        if (newText && newText !== todo.text) {
+          await fetch(`/api/todos/${todo.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: newText })
+          });
+        }
+        fetchTodos();
+      };
+
+      input.addEventListener('blur', save);
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') save();
+        if (e.key === 'Escape') fetchTodos();
+      });
+    }
+
+    // Event Listeners
+    document.getElementById('addBtn').addEventListener('click', addTodo);
+    document.getElementById('todoInput').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') addTodo();
+    });
+
+    document.querySelectorAll('.filter-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+        e.target.classList.add('active');
+        currentFilter = e.target.dataset.filter;
+        fetchTodos();
+      });
+    });
+
+    document.getElementById('clearCompletedBtn').addEventListener('click', async () => {
+      await fetch('/api/todos/actions/clear-completed', { method: 'DELETE' });
+      fetchTodos();
+    });
+
+    document.getElementById('clearAllBtn').addEventListener('click', async () => {
+      await fetch('/api/todos/actions/clear-all', { method: 'DELETE' });
+      fetchTodos();
+    });
+
+    // Initial load
+    fetchTodos();
+  </script>
+</body>
+</html>
